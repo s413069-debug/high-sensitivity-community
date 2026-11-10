@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function validNickname(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
+
+    match /posts/{postId} {
+      // 所有人可讀已審核文章；待審核文章不公開。
+      allow read: if resource.data.status == "approved";
+      // 匿名登入後可新增待審核文章；使用者不能自行修改或刪除。
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['nickname','title','body','category','status','createdAt','uid'])
+        && validNickname(request.resource.data.nickname)
+        && request.resource.data.title is string
+        && request.resource.data.title.size() >= 1
+        && request.resource.data.title.size() <= 60
+        && request.resource.data.body is string
+        && request.resource.data.body.size() >= 1
+        && request.resource.data.body.size() <= 2000
+        && request.resource.data.category is string
+        && request.resource.data.status == "pending"
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+
+      match /comments/{commentId} {
+        allow read: if get(/databases/$(database)/documents/posts/$(postId)).data.status == "approved"
+          && resource.data.status == "approved";
+        allow create: if signedIn()
+          && get(/databases/$(database)/documents/posts/$(postId)).data.status == "approved"
+          && request.resource.data.keys().hasAll(['nickname','body','status','createdAt','uid'])
+          && validNickname(request.resource.data.nickname)
+          && request.resource.data.body is string
+          && request.resource.data.body.size() >= 1
+          && request.resource.data.body.size() <= 500
+          && request.resource.data.status == "pending"
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
